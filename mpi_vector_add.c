@@ -39,7 +39,7 @@ void Print_vector(double local_b[], int local_n, int n, char title[],
       int my_rank, MPI_Comm comm);
 void Parallel_vector_sum(double local_x[], double local_y[],
       double local_z[], int local_n);
-void Generate_vector(double local_a[], int local_n, int my_rank);
+void Generate_vector(double local_a[], int local_n, int my_rank, int i_seed);
 
 
 
@@ -82,8 +82,8 @@ int main(int argc, char* argv[]) {
     Allocate_vectors(&local_x, &local_y, &local_z, local_n, comm);
 
     // Generate random vectors
-    Generate_vector(local_x, local_n, my_rank);
-    Generate_vector(local_y, local_n, my_rank);
+    Generate_vector(local_x, local_n, my_rank, 1);
+    Generate_vector(local_y, local_n, my_rank, 2);
 
     // Measure the time taken for vector addition
     MPI_Barrier(comm);  // Synchronize before starting the timer
@@ -348,8 +348,8 @@ void Parallel_vector_sum(
  *            my_rank:  the rank of the process
  * Out arg:   local_a:  the local vector to be generated
  */
-void Generate_vector(double local_a[], int local_n, int my_rank) {
-    srand(time(NULL) + my_rank);  // Seed for the random number generator
+void Generate_vector(double local_a[], int local_n, int my_rank, int i_seed) {
+    srand(time(NULL) + my_rank + i_seed);  // Seed for the random number generator
     for (int i = 0; i < local_n; i++) {
         local_a[i] = (double)rand() / RAND_MAX;  // Generate a random number between 0 and 1
     }

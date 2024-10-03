@@ -4,8 +4,8 @@
 num_tests=10
 
 # Vector size
-vector_size=300000000
-mpi_vector_size=300000000
+vector_size=200000000
+mpi_vector_size=200000000
 
 # Files for sequential and parallel programs
 seq_program="./vector_add"

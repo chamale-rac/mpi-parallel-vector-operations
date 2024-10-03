@@ -23,7 +23,7 @@ void Allocate_vectors(double** x_pp, double** y_pp, double** z_pp, int n);
 void Read_vector(double a[], int n, char vec_name[]);
 void Print_vector(double b[], int n, char title[]);
 void Vector_sum(double x[], double y[], double z[], int n);
-void Generate_vector(double a[], int n);
+void Generate_vector(double a[], int n, int i_seed);
 
 /*---------------------------------------------------------------------*/
 int main(int argc, char* argv[]) {
@@ -46,8 +46,8 @@ int main(int argc, char* argv[]) {
 
    Allocate_vectors(&x, &y, &z, n);
 
-   Generate_vector(x, n);
-   Generate_vector(y, n);
+   Generate_vector(x, n, 1);
+   Generate_vector(y, n, 2);
 
    start = clock();
    Vector_sum(x, y, z, n);
@@ -178,8 +178,8 @@ void Vector_sum(
  * In args:   n:  the order of the vector
  * Out arg:   a:  the vector to be generated
  */
-void Generate_vector(double a[], int n) {
-   srand(time(NULL)); // Seed for the random number generator
+void Generate_vector(double a[], int n, int i_seed) {
+   srand(time(NULL) + i_seed); // Seed for the random number generator
    for (int i = 0; i < n; i++) {
       a[i] = (double)rand() / RAND_MAX; // Generate a random number between 0 and 1
    }
