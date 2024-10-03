@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <time.h>
 
 void Check_for_error(int local_ok, char fname[], char message[],
       MPI_Comm comm);
@@ -38,45 +39,75 @@ void Print_vector(double local_b[], int local_n, int n, char title[],
       int my_rank, MPI_Comm comm);
 void Parallel_vector_sum(double local_x[], double local_y[],
       double local_z[], int local_n);
+void Generate_vector(double local_a[], int local_n, int my_rank);
+
 
 
 /*-------------------------------------------------------------------*/
-int main(void) {
-   int n, local_n;
-   int comm_sz, my_rank;
-   double *local_x, *local_y, *local_z;
-   MPI_Comm comm;
-   double tstart, tend;
+int main(int argc, char* argv[]) {
+    int n, local_n;
+    int comm_sz, my_rank;
+    double *local_x, *local_y, *local_z;
+    MPI_Comm comm;
+    double start, end;
 
-   MPI_Init(NULL, NULL);
-   comm = MPI_COMM_WORLD;
-   MPI_Comm_size(comm, &comm_sz);
-   MPI_Comm_rank(comm, &my_rank);
+    // Initialize MPI
+    MPI_Init(&argc, &argv);
+    comm = MPI_COMM_WORLD;
+    MPI_Comm_size(comm, &comm_sz);
+    MPI_Comm_rank(comm, &my_rank);
 
-   //Read_n(&n, &local_n, my_rank, comm_sz, comm);
-   n = 10000000;
-   tstart = MPI_Wtime();
-   Allocate_vectors(&local_x, &local_y, &local_z, local_n, comm);
+    // Check if the user provided the vector size as an argument
+    if (argc != 2) {
+        if (my_rank == 0) {
+            fprintf(stderr, "Usage: %s <order of the vectors>\n", argv[0]);
+        }
+        MPI_Finalize();
+        exit(-1);
+    }
 
-   Read_vector(local_x, local_n, n, "x", my_rank, comm);
-   //Print_vector(local_x, local_n, n, "x is", my_rank, comm);
-   Read_vector(local_y, local_n, n, "y", my_rank, comm);
-   //Print_vector(local_y, local_n, n, "y is", my_rank, comm);
+    // Receive n as an execution parameter
+    n = atoi(argv[1]);
+    if (n <= 0 || n % comm_sz != 0) {
+        if (my_rank == 0) {
+            fprintf(stderr, "Order of the vectors should be a positive integer and evenly divisible by the number of processes\n");
+        }
+        MPI_Finalize();
+        exit(-1);
+    }
 
-   Parallel_vector_sum(local_x, local_y, local_z, local_n);
-   tend = MPI_Wtime();
+    local_n = n / comm_sz;
 
-   //Print_vector(local_z, local_n, n, "The sum is", my_rank, comm);
-   if(my_rank==0)
-    printf("\nTook %f ms to run\n", (tend-tstart)*1000);
+    // Allocate memory for vectors
+    Allocate_vectors(&local_x, &local_y, &local_z, local_n, comm);
 
-   free(local_x);
-   free(local_y);
-   free(local_z);
+    // Generate random vectors
+    Generate_vector(local_x, local_n, my_rank);
+    Generate_vector(local_y, local_n, my_rank);
 
-   MPI_Finalize();
+    // Measure the time taken for vector addition
+    MPI_Barrier(comm);  // Synchronize before starting the timer
+    start = MPI_Wtime();
+    Parallel_vector_sum(local_x, local_y, local_z, local_n);
+    end = MPI_Wtime();
 
-   return 0;
+    // Print the vectors
+    Print_vector(local_x, local_n, n, "=> The first vector is", my_rank, comm);
+    Print_vector(local_y, local_n, n, "=> The second vector is", my_rank, comm);
+    Print_vector(local_z, local_n, n, "=> The sum is", my_rank, comm);
+
+    // Print the time taken for vector addition
+    if (my_rank == 0) {
+        printf("Vector addition took %f seconds\n", end - start);
+    }
+
+    // Free allocated memory
+    free(local_x);
+    free(local_y);
+    free(local_z);
+
+    MPI_Finalize();
+    return 0;
 }  /* main */
 
 /*-------------------------------------------------------------------
@@ -258,30 +289,36 @@ void Print_vector(
       int       my_rank    /* in */,
       MPI_Comm  comm       /* in */) {
 
-   double* b = NULL;
-   int i;
-   int local_ok = 1;
-   char* fname = "Print_vector";
+    double* b = NULL;
+    int i;
+    if (my_rank == 0) {
+        b = malloc(n * sizeof(double));
+        if (b == NULL) {
+            fprintf(stderr, "Can't allocate temporary vector for printing\n");
+            MPI_Finalize();
+            exit(-1);
+        }
+    }
 
-   if (my_rank == 0) {
-      b = malloc(n*sizeof(double));
-      if (b == NULL) local_ok = 0;
-      Check_for_error(local_ok, fname, "Can't allocate temporary vector",
-            comm);
-      MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE,
-            0, comm);
-      printf("%s\n", title);
-      for (i = 0; i < n; i++)
-         printf("%f ", b[i]);
-      printf("\n");
-      free(b);
-   } else {
-      Check_for_error(local_ok, fname, "Can't allocate temporary vector",
-            comm);
-      MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE, 0,
-         comm);
-   }
-}  /* Print_vector */
+    MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE, 0, comm);
+
+    if (my_rank == 0) {
+        printf("%s\n", title);
+        printf("\t");
+        int elements_to_print = (n < 20) ? n : 10;
+        for (i = 0; i < elements_to_print; i++)
+            printf("%f ", b[i]);
+        printf("\t");
+        if (n >= 20) {
+            printf("\n\t...\n");
+            printf("\t");
+            for (i = n - 10; i < n; i++)
+                printf("%f ", b[i]);
+        }
+        printf("\n");
+        free(b);
+    }
+} /* Print_vector */
 
 
 /*-------------------------------------------------------------------
@@ -303,3 +340,17 @@ void Parallel_vector_sum(
    for (local_i = 0; local_i < local_n; local_i++)
       local_z[local_i] = local_x[local_i] + local_y[local_i];
 }  /* Parallel_vector_sum */
+
+/*---------------------------------------------------------------------
+ * Function:  Generate_vector
+ * Purpose:   Generate a vector with random numbers
+ * In args:   local_n:  the size of the local vectors
+ *            my_rank:  the rank of the process
+ * Out arg:   local_a:  the local vector to be generated
+ */
+void Generate_vector(double local_a[], int local_n, int my_rank) {
+    srand(time(NULL) + my_rank);  // Seed for the random number generator
+    for (int i = 0; i < local_n; i++) {
+        local_a[i] = (double)rand() / RAND_MAX;  // Generate a random number between 0 and 1
+    }
+}
